@@ -17,6 +17,7 @@ try {
         .help()
         .demandCommand()
         .command('import <model> <file>', 'import model data from excel file.')
+        .command('export <model> [file] [--after timestamp]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter.')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
     amplifyConfig = require(`${process.env['HOME']}/.amplify/admin/config.json`);
@@ -25,6 +26,77 @@ try {
     const gqlEndpoint = Object.values(amplifyMeta.api)[0].output.GraphQLAPIEndpointOutput;
 
     switch (options._[0]) {
+        case 'export':            
+            initToken(appId).then(async (config) => {
+                const client = new AWSAppSyncClient({
+                    url: gqlEndpoint,
+                    region: config.region,
+                    auth: {
+                        type: 'AWS_IAM',
+                        credentials: aws.config.credentials,
+                    },
+                    disableOffline: true
+                });
+                let outputFile = `${options.model}.xlsx`
+                if (options.file)
+                    outputFile = options.file
+                const modelName = options.model;
+                fs.readFile(`${process.cwd()}/amplify/#current-cloud-backend/api/${Object.keys(amplifyMeta.api)[0]}/schema.graphql`, 'utf8', async function (err, data) {
+                    if (err) {
+                        return error(err);
+                    }
+                    const modelFields = [];
+                    const typeDefs = gql`${data}`
+                    typeDefs.definitions.some(def => {
+                        if (def.kind === 'ObjectTypeDefinition') {
+                            if (def.name.value === modelName) {
+                                def.fields.forEach(field => {
+                                    if (field.kind === 'FieldDefinition') {
+                                        if (field.type.kind === 'NamedType') {
+                                            modelFields.push(field.name.value);
+                                        } else if (field.type.kind === 'NonNullType') {
+                                            modelFields.push(field.name.value);
+                                        }
+                                    }
+
+                                })
+                                return true;
+                            }
+                        }
+                    });
+                    if (modelFields.length > 0) {
+                        const queryGQL = gql(`
+                            query List${modelName}s {
+                                list${modelName}s {
+                                    items {
+                                        ${modelFields.join('\n')}
+                                        _lastChangedAt
+                                    }
+                                }
+                            }
+                        `);
+                        await client.hydrated();
+                        const response = await client.query({
+                            query: queryGQL,
+                            fetchPolicy: 'no-cache',
+                        });
+                        let exportedData = response.data[`list${modelName}s`].items;
+                        if(options.after){
+                            const afterTime = parseInt(options.after);
+                            exportedData = exportedData.filter(record => record._lastChangedAt > afterTime);
+                        }
+                        const sheet = XLSX.utils.json_to_sheet(exportedData);
+                        const exportBook = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(exportBook, sheet, modelName);
+                        XLSX.writeFile(exportBook, outputFile);
+                        info(`${exportedData.length} items have been export to ${outputFile}`);
+                    } else {
+                        error('Model Definition not found!');
+                    }
+                });
+            }).catch(error);
+
+            break;
         case 'import':
             initToken(appId).then(async (config) => {
                 const client = new AWSAppSyncClient({
@@ -134,7 +206,7 @@ function get_header_row(sheet) {
         }
     }
     return headers.filter(header => {
-        return header.match(/[a-zA-Z_\-0-9]/);
+        return header.match(/^[^_^\d][a-zA-Z_\-\d]*/);
     });
 }
 
