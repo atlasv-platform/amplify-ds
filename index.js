@@ -8,7 +8,9 @@ const AWSAppSyncClient = require('aws-appsync').default;
 const gql = require('graphql-tag');
 const XLSX = require('xlsx');
 const fs = require('fs');
-
+const Confirm = require('prompt-confirm');
+const Synchronizer = require('@silvermine/dynamodb-table-sync');
+const prompt = new Confirm('Do you confirm to start syncing?');
 global.fetch = require("node-fetch");
 
 let amplifyConfig, amplifyMeta
@@ -16,6 +18,7 @@ try {
     const options = yargs
         .help()
         .demandCommand()
+        .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter.')
         .command('example <model> [file]', 'export example excel file for a model.')
@@ -26,7 +29,73 @@ try {
     const gqlEndpoint = Object.values(amplifyMeta.api)[0].output.GraphQLAPIEndpointOutput;
 
     switch (options._[0]) {
-        case 'export':            
+        case 'sync':
+            try {
+                initToken(appId).then(async (config) => {
+                    try {
+                        const modelName = options.model;
+                        const amplifybackend = new aws.AmplifyBackend();
+                        const appsync = new aws.AppSync();
+                        const srcMD = await amplifybackend.getBackend({
+                            AppId: appId,
+                            BackendEnvironmentName: options.src
+                        }).promise();
+                        // const srcgqlEndpoint = Object.values(JSON.parse(srcMD.AmplifyMetaConfig).api)[0].output.GraphQLAPIEndpointOutput;
+                        const srcAPIID = Object.values(JSON.parse(srcMD.AmplifyMetaConfig).api)[0].output.GraphQLAPIIdOutput;
+                        const srcDS = await appsync.getDataSource({
+                            apiId: srcAPIID,
+                            name: `${modelName}Table`
+                        }).promise();
+                        const srcDB = srcDS.dataSource.dynamodbConfig.tableName;
+
+                        const destMD = await amplifybackend.getBackend({
+                            AppId: appId,
+                            BackendEnvironmentName: options.dest
+                        }).promise();
+                        // const destgqlEndpoint = Object.values(JSON.parse(destMD.AmplifyMetaConfig).api)[0].output.GraphQLAPIEndpointOutput;
+                        const destAPIID = Object.values(JSON.parse(destMD.AmplifyMetaConfig).api)[0].output.GraphQLAPIIdOutput;
+                        const destDS = await appsync.getDataSource({
+                            apiId: destAPIID,
+                            name: `${modelName}Table`
+                        }).promise();
+                        const destDB = destDS.dataSource.dynamodbConfig.tableName;
+                        info(`Starting Sync ${destDB} from ${srcDB}`);
+                        const syncParams = {ignoreAtts:['_version','_lastChangedAt','updatedAt','createdAt']};
+                        if (!options.dryrun) {
+                            syncParams.writeMissing = true;
+                            syncParams.writeDiffering = true;
+                            if (options.delete) {
+                                syncParams.scanForExtra = true;
+                                syncParams.deleteExtra = true;
+                            }
+                            const answer = await prompt.run();
+                            if (!answer) {
+                                process.exit();
+                            }
+                        } else {
+                            if (options.delete) {
+                                syncParams.scanForExtra = true;
+                            }
+                        }
+                        // console.info(syncParams);
+                        const synchronizer = new Synchronizer(
+                            { region: config.region, name: srcDB },
+                            [
+                                { region: config.region, name: destDB },
+                            ],
+                            syncParams
+                        );
+                        console.log(syncParams);
+                        await synchronizer.run();
+                    } catch (e) {
+                        error(e);
+                    }
+                });
+            } catch (err) {
+                error(err);
+            }
+            break;
+        case 'export':
             initToken(appId).then(async (config) => {
                 const client = new AWSAppSyncClient({
                     url: gqlEndpoint,
@@ -71,6 +140,7 @@ try {
                                     items {
                                         ${modelFields.join('\n')}
                                         _lastChangedAt
+                                        _version
                                     }
                                 }
                             }
@@ -81,7 +151,7 @@ try {
                             fetchPolicy: 'no-cache',
                         });
                         let exportedData = response.data[`list${modelName}s`].items;
-                        if(options.after){
+                        if (options.after) {
                             const afterTime = parseInt(options.after);
                             exportedData = exportedData.filter(record => record._lastChangedAt > afterTime);
                         }
@@ -116,6 +186,23 @@ try {
                 const results = _.map(items, function (currentObject) {
                     return _.pick(currentObject, headers);
                 });
+                const queryGQL = gql(`
+                            query Get${modelName}($id: ID!) {
+                                get${modelName}(id: $id) {
+                                    ${headers.join('\n')}
+                                    _version
+                                }
+                            }
+                        `);
+                const updateGQL = gql(`
+                        mutation Update${modelName}(
+                            $input: Update${modelName}Input!
+                        ) {
+                            update${modelName}(input: $input) {
+                               id
+                            }
+                        }
+                    `);
                 const mutationGQL = gql(`
                         mutation Create${modelName}(
                             $input: Create${modelName}Input!
@@ -125,20 +212,45 @@ try {
                             }
                         }
                     `);
-                let totalCount = 0;
+                let totalAddCount = 0;
+                let totalUpdateCount = 0;
                 await client.hydrated();
                 for (let index = 0; index < results.length; index++) {
                     const item = results[index];
-                    const response = await client.mutate({
-                        mutation: mutationGQL, variables: {
-                            input: item
-                        },
-                        fetchPolicy: 'no-cache',
-                    });
-                    totalCount++;
-                    log(`${JSON.stringify(response.data)} added`);
+                    let queryRes;
+                    if (item.id) {
+                        queryRes = await client.query({
+                            query: queryGQL,
+                            fetchPolicy: 'no-cache',
+                            variables: { id: item.id },
+                        });
+                    }
+                    if (queryRes && queryRes.data && queryRes.data[`get${modelName}`]) { //exist
+                        if (isEqual(queryRes.data[`get${modelName}`], item, ['__typename','_version'])) {
+                            continue;
+                        } else {
+                            item['_version'] = queryRes.data[`get${modelName}`]['_version'];
+                            const response = await client.mutate({
+                                mutation: updateGQL, variables: {
+                                    input: item
+                                },
+                                fetchPolicy: 'no-cache',
+                            });
+                            log(`${JSON.stringify(response.data)} updated`);
+                            totalUpdateCount++;
+                        }
+                    } else {
+                        const response = await client.mutate({
+                            mutation: mutationGQL, variables: {
+                                input: item
+                            },
+                            fetchPolicy: 'no-cache',
+                        });
+                        log(`${JSON.stringify(response.data)} added`);
+                        totalAddCount++;
+                    }
                 }
-                info(`${totalCount} items have been added to datastore!`);
+                info(`${totalAddCount} items have been added to datastore!\n${totalUpdateCount} items have been update in datastore!`);
             }).catch(error);
             break;
         case 'example':
@@ -192,6 +304,18 @@ try {
     }
 
 }
+
+function promiseChildProcess(child) {
+    return new Promise(function (resolve, reject) {
+        child.addListener("error", reject);
+        child.addListener("exit", resolve);
+    });
+}
+
+function isEqual(item1, item2, ignores) {
+    return _.isEqual(_.omit(item1, ignores), _.omit(item2, ignores));
+}
+
 
 function get_header_row(sheet) {
     var headers = [];
