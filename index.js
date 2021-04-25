@@ -77,7 +77,6 @@ try {
                                 syncParams.scanForExtra = true;
                             }
                         }
-                        // console.info(syncParams);
                         const synchronizer = new Synchronizer(
                             { region: config.region, name: srcDB },
                             [
@@ -85,8 +84,12 @@ try {
                             ],
                             syncParams
                         );
-                        console.log(syncParams);
                         await synchronizer.run();
+                        if (options.dryrun) {
+                            info('Please Check the status above to see the differences.');
+                        } else {
+                            info(`Datasource ${srcDB} ${destDB} has been synced.`);
+                        }
                     } catch (e) {
                         error(e);
                     }
