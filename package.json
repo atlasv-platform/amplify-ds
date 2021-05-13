@@ -1,6 +1,6 @@
 {
   "name": "amplify-ds",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Manage DataStore with Amplify Project",
   "main": "index.js",
   "scripts": {
@@ -16,7 +16,7 @@
     "url": "https://github.com/milk531/amplify-ds.git"
   },
   "dependencies": {
-    "@okwenxi/dynamodb-table-sync": "^1.3.0",
+    "@okwenxi/dynamodb-table-sync": "^1.3.1",
     "aws-appsync": "^4.0.3",
     "aws-sdk": "^2.836.0",
     "boxen": "^4.0.0",
