@@ -9,7 +9,7 @@ const gql = require('graphql-tag');
 const XLSX = require('xlsx');
 const fs = require('fs');
 const Confirm = require('prompt-confirm');
-const Synchronizer = require('@silvermine/dynamodb-table-sync');
+const Synchronizer = require('@okwenxi/dynamodb-table-sync');
 const prompt = new Confirm('Do you confirm to start syncing?');
 global.fetch = require("node-fetch");
 
@@ -78,9 +78,9 @@ try {
                             }
                         }
                         const synchronizer = new Synchronizer(
-                            { region: config.region, name: srcDB },
+                            { region: config.region, name: srcDB,creds:config },
                             [
-                                { region: config.region, name: destDB },
+                                { region: config.region, name: destDB,creds:config },
                             ],
                             syncParams
                         );
