@@ -137,23 +137,32 @@ try {
                         }
                     });
                     if (modelFields.length > 0) {
-                        const queryGQL = gql(`
-                            query List${modelName}s {
-                                list${modelName}s {
-                                    items {
-                                        ${modelFields.join('\n')}
-                                        _lastChangedAt
-                                        _version
+                        await client.hydrated();
+                        let exportedData = [];
+                        let nextToken;
+                        do {
+                            const queryGQL = gql(`
+                                query List${modelName}s {
+                                    list${modelName}s${nextToken?`(nextToken: "${nextToken}")`:''} {
+                                        items {
+                                            ${modelFields.join('\n')}
+                                            _lastChangedAt
+                                            _version
+                                        }
+                                        nextToken
                                     }
                                 }
-                            }
-                        `);
-                        await client.hydrated();
-                        const response = await client.query({
-                            query: queryGQL,
-                            fetchPolicy: 'no-cache',
-                        });
-                        let exportedData = response.data[`list${modelName}s`].items;
+                            `);
+                            const response = await client.query({
+                                query: queryGQL,
+                                fetchPolicy: 'no-cache',
+                            });
+                            Array.prototype.push.apply(exportedData, response.data[`list${modelName}s`].items);
+                            nextToken = response.data[`list${modelName}s`].nextToken;
+                            // console.info(nextToken);
+                            // console.info(exportedData);
+                        } while (nextToken)
+
                         if (options.after) {
                             const afterTime = parseInt(options.after);
                             exportedData = exportedData.filter(record => record._lastChangedAt > afterTime);
