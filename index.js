@@ -10,6 +10,7 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 const Confirm = require('prompt-confirm');
 const Synchronizer = require('@okwenxi/dynamodb-table-sync');
+const { record } = require('apollo-cache-inmemory');
 const prompt = new Confirm('Do you confirm to start syncing?');
 global.fetch = require("node-fetch");
 
@@ -20,7 +21,7 @@ try {
         .demandCommand()
         .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
-        .command('export <model> [file] [--after timestamp]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter.')
+        .command('export <model> [file] [--after timestamp] [--showdeleted]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --showdeleted to show deleted data.')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
     amplifyConfig = require(`${process.env['HOME']}/.amplify/admin/config.json`);
@@ -148,6 +149,7 @@ try {
                                             ${modelFields.join('\n')}
                                             _lastChangedAt
                                             _version
+                                            _deleted
                                         }
                                         nextToken
                                     }
@@ -159,13 +161,17 @@ try {
                             });
                             Array.prototype.push.apply(exportedData, response.data[`list${modelName}s`].items);
                             nextToken = response.data[`list${modelName}s`].nextToken;
-                            // console.info(nextToken);
+                            // console.info(`nextToken: ${nextToken}`);
+                            // console.info(`exportedData: \n`);
                             // console.info(exportedData);
                         } while (nextToken)
 
                         if (options.after) {
                             const afterTime = parseInt(options.after);
                             exportedData = exportedData.filter(record => record._lastChangedAt > afterTime);
+                        }
+                        if(!options.showdeleted) {
+                            exportedData = exportedData.filter(record => !record._deleted);
                         }
                         const sheet = XLSX.utils.json_to_sheet(exportedData);
                         const exportBook = XLSX.utils.book_new();
