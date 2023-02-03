@@ -15,7 +15,7 @@ amplifyds <command>
 Commands:
   amplifyds sync <model> <src> <dest> [--delete] [--dryrun]  sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.
   amplifyds import <model> <file>                       import model data from excel file.
-  export <model> [file] [--after timestamp] [--all]     export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.
+  amplifyds export <model> [file] [--after timestamp] [--all]     export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.
   amplifyds example <model> [file]                      export example excel file for a model.
 
 ```
