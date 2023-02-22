@@ -23,6 +23,7 @@ try {
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp] [--all]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.')
         .command('schema <file>', 'list all tables in this schema.')
+        .command('validate', 'check if current init token is validate. Output USER_TOKEN_VALIDATE_PASSED if ok, otherwise output USER_TOKEN_VALIDATE_FAILED')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
     amplifyConfig = require(`${process.env['HOME']}/.amplify/admin/config.json`);
@@ -295,7 +296,24 @@ try {
                 error(err);
             }
             break;
-        case 'example':
+            case 'validate':
+                try {
+                    initToken(appId).then((config) => {
+                        if (config != undefined) {
+                            console.log('USER_TOKEN_VALIDATE_PASSED');
+                        } else {
+                            console.log('USER_TOKEN_VALIDATE_FAILED');
+                        }
+                    }, (reason) => {
+                        console.log(reason);
+                        console.log('USER_TOKEN_VALIDATE_FAILED');
+                    });
+                } catch (err) {
+                    error(err);
+                    console.log('USER_TOKEN_VALIDATE_FAILED');
+                }
+                break;
+            case 'example':
             let outputFile = `${options.model}.xlsx`
             if (options.file)
                 outputFile = options.file
