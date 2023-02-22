@@ -22,6 +22,7 @@ try {
         .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp] [--all]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.')
+        .command('schema <file>', 'list all tables in this schema.')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
     amplifyConfig = require(`${process.env['HOME']}/.amplify/admin/config.json`);
@@ -270,6 +271,29 @@ try {
                 }
                 info(`${totalAddCount} items have been added to datastore!\n${totalUpdateCount} items have been update in datastore!`);
             }).catch(error);
+            break;
+        case 'schema':
+            try {
+                let content = fs.readFileSync(`${process.cwd()}/src/models/schema.js`).toString();
+                content = content.replace('export const schema = ', '');
+                content = content.replace('};', '}');
+                const schema = JSON.parse(content);
+                const models = schema.models;
+                let exportedData = [];
+                Object.entries(models).forEach(([name, model]) => {
+                    console.log(name);
+                    exportedData.push({'TableName': name});
+                });
+                const outputFile = options.file;
+                const sheet = XLSX.utils.json_to_sheet(exportedData);
+                const exportBook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(exportBook, sheet);
+                XLSX.writeFile(exportBook, outputFile);
+                info(`${exportedData.length} items have been export to ${outputFile}`);
+            } catch (err) {
+                console.log('catch error');
+                error(err);
+            }
             break;
         case 'example':
             let outputFile = `${options.model}.xlsx`
