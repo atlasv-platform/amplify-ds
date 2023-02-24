@@ -13,11 +13,29 @@ npm install -g amplify-ds
 amplifyds <command>
 
 Commands:
-  amplifyds sync <model> <src> <dest> [--delete] [--dryrun]  sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.
-  amplifyds import <model> <file>                       import model data from excel file.
-  amplifyds export <model> [file] [--after timestamp] [--all]     export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.
-  amplifyds example <model> [file]                      export example excel file for a model.
+  amplifyds sync <model> <src> <dest>        sync model data from <src> env to
+  [--delete] [--dryrun]                      <dest> env. When add [--delete],
+                                             data that only exist in dest will
+                                             be deleted.
 
+  amplifyds import <model> <file>            import model data from excel file.
+
+  amplifyds export <model> [file] [--after   export model data to excel file, you
+  timestamp] [--all]                         can add --after to only export data
+                                             older than [timestamp] parameter;
+                                             add --all to show all data include
+                                             deleted.
+
+  amplifyds schema <file>                    list all tables in this schema.
+
+  amplifyds validate                         check if current init token is
+                                             validate. Output
+                                             USER_TOKEN_VALIDATE_PASSED if ok,
+                                             otherwise output
+                                             USER_TOKEN_VALIDATE_FAILED.
+                                             
+  amplifyds example <model> [file]           export example excel file for a
+                                             model.
 ```
 * Use `--dryrun` in `sync` command before actually starting sync process to see the differ overview
 * Use `--delete` in `sync` command to delete isolated data that only exist in destination
