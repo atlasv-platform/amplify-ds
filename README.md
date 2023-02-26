@@ -26,7 +26,7 @@ Commands:
                                              add --all to show all data include
                                              deleted.
 
-  amplifyds schema <file>                    list all tables in this schema.
+  amplifyds schema [file]                    list all tables in this schema.
 
   amplifyds validate                         check if current init token is
                                              validate. Output

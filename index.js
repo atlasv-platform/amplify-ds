@@ -22,7 +22,7 @@ try {
         .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp] [--all]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.')
-        .command('schema <file>', 'list all tables in this schema.')
+        .command('schema [file]', 'list all tables in this schema.')
         .command('validate', 'check if current init token is validate. Output USER_TOKEN_VALIDATE_PASSED if ok, otherwise output USER_TOKEN_VALIDATE_FAILED')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
@@ -275,22 +275,29 @@ try {
             break;
         case 'schema':
             try {
-                let content = fs.readFileSync(`${process.cwd()}/src/models/schema.js`).toString();
-                content = content.replace('export const schema = ', '');
-                content = content.replace('};', '}');
-                const schema = JSON.parse(content);
-                const models = schema.models;
-                let exportedData = [];
-                Object.entries(models).forEach(([name, model]) => {
-                    console.log(name);
-                    exportedData.push({'TableName': name});
+                let outputFile = `schema.xlsx`
+                if (options.file)
+                    outputFile = options.file
+                fs.readFile(`${process.cwd()}/amplify/#current-cloud-backend/api/${Object.keys(amplifyMeta.api)[0]}/schema.graphql`, 'utf8', function (err, data) {
+                    if (err) {
+                        return error(err);
+                    }
+                    const tableObj = [];
+                    const typeDefs = gql`${data}`
+                    typeDefs.definitions.forEach(def => {
+                        if (def.kind === 'ObjectTypeDefinition') {
+                            tableObj.push({ "TableName": def.name.value});
+                        }
+                    });
+                    if (Object.keys(tableObj).length > 0) {
+                        const sheet = XLSX.utils.json_to_sheet(tableObj);
+                        const book = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(book, sheet);
+                        XLSX.writeFile(book, outputFile);
+                    } else {
+                        error('Model Definition not found!');
+                    }
                 });
-                const outputFile = options.file;
-                const sheet = XLSX.utils.json_to_sheet(exportedData);
-                const exportBook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(exportBook, sheet);
-                XLSX.writeFile(exportBook, outputFile);
-                info(`${exportedData.length} items have been export to ${outputFile}`);
             } catch (err) {
                 console.log('catch error');
                 error(err);
