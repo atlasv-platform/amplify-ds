@@ -372,12 +372,6 @@ try {
 
 }
 
-function promiseChildProcess(child) {
-    return new Promise(function (resolve, reject) {
-        child.addListener("error", reject);
-        child.addListener("exit", resolve);
-    });
-}
 
 function isEqual(item1, item2, ignores) {
     return _.isEqual(_.omit(item1, ignores), _.omit(item2, ignores));
@@ -403,15 +397,22 @@ function get_header_row(sheet) {
 
 
 async function initToken(appId) {
-    admin = amplifyConfig[appId];
-    if (isJwtExpired(admin.idToken)) {
-        refreshResult = await refreshJWTs(admin);
-        admin.idToken.jwtToken = refreshResult.IdToken;
-        admin.accessToken.jwtToken = refreshResult.AccessToken;
+    try{
+        admin = amplifyConfig[appId];
+        if (isJwtExpired(admin.idToken)) {
+            refreshResult = await refreshJWTs(admin);
+            admin.idToken.jwtToken = refreshResult.IdToken;
+            admin.accessToken.jwtToken = refreshResult.AccessToken;
+        }
+        awsConfig = await getAdminCognitoCredentials(admin.idToken, admin.IdentityId, admin.region);
+        aws.config.update(awsConfig);
+        return awsConfig;
+    } catch (e) {
+        if(e.code === 'NotAuthorizedException'){
+            log('Amplify Credentials is not exist or expired,please run `amplify console` to login.');
+        }
+        throw e;
     }
-    awsConfig = await getAdminCognitoCredentials(admin.idToken, admin.IdentityId, admin.region);
-    aws.config.update(awsConfig);
-    return awsConfig;
 }
 
 async function getAdminCognitoCredentials(idToken, identityId, region) {
