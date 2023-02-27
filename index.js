@@ -22,6 +22,8 @@ try {
         .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp] [--all]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.')
+        .command('schema [file]', 'list all tables in this schema.')
+        .command('validate', 'check if current init token is validate. Output USER_TOKEN_VALIDATE_PASSED if ok, otherwise output USER_TOKEN_VALIDATE_FAILED')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
     amplifyConfig = require(`${process.env['HOME']}/.amplify/admin/config.json`);
@@ -271,7 +273,54 @@ try {
                 info(`${totalAddCount} items have been added to datastore!\n${totalUpdateCount} items have been update in datastore!`);
             }).catch(error);
             break;
-        case 'example':
+        case 'schema':
+            try {
+                let outputFile = `schema.xlsx`
+                if (options.file)
+                    outputFile = options.file
+                fs.readFile(`${process.cwd()}/amplify/#current-cloud-backend/api/${Object.keys(amplifyMeta.api)[0]}/schema.graphql`, 'utf8', function (err, data) {
+                    if (err) {
+                        return error(err);
+                    }
+                    const tableObj = [];
+                    const typeDefs = gql`${data}`
+                    typeDefs.definitions.forEach(def => {
+                        if (def.kind === 'ObjectTypeDefinition') {
+                            tableObj.push({ "TableName": def.name.value});
+                        }
+                    });
+                    if (Object.keys(tableObj).length > 0) {
+                        const sheet = XLSX.utils.json_to_sheet(tableObj);
+                        const book = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(book, sheet);
+                        XLSX.writeFile(book, outputFile);
+                    } else {
+                        error('Model Definition not found!');
+                    }
+                });
+            } catch (err) {
+                console.log('catch error');
+                error(err);
+            }
+            break;
+            case 'validate':
+                try {
+                    initToken(appId).then((config) => {
+                        if (config != undefined) {
+                            console.log('USER_TOKEN_VALIDATE_PASSED');
+                        } else {
+                            console.log('USER_TOKEN_VALIDATE_FAILED');
+                        }
+                    }, (reason) => {
+                        console.log(reason);
+                        console.log('USER_TOKEN_VALIDATE_FAILED');
+                    });
+                } catch (err) {
+                    error(err);
+                    console.log('USER_TOKEN_VALIDATE_FAILED');
+                }
+                break;
+            case 'example':
             let outputFile = `${options.model}.xlsx`
             if (options.file)
                 outputFile = options.file
