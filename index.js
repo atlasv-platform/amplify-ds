@@ -22,7 +22,7 @@ try {
         .command('sync <model> <src> <dest> [--delete] [--dryrun]', 'sync model data from <src> env to <dest> env. When add [--delete], data that only exist in dest will  be deleted.')
         .command('import <model> <file>', 'import model data from excel file.')
         .command('export <model> [file] [--after timestamp] [--all]', 'export model data to excel file, you can add --after to only export data older than [timestamp] parameter; add --all to show all data include deleted.')
-        .command('schema [file]', 'list all tables in this schema.')
+        .command('schema <model> [file]', 'model=tables: list table names of all table in this schema; model=XXXX, list column defines of XXXX model.')
         .command('validate', 'check if current init token is validate. Output USER_TOKEN_VALIDATE_PASSED if ok, otherwise output USER_TOKEN_VALIDATE_FAILED')
         .command('example <model> [file]', 'export example excel file for a model.')
         .argv;
@@ -275,22 +275,41 @@ try {
             break;
         case 'schema':
             try {
-                let outputFile = `schema.xlsx`
+                let modelName = options.model
+                let outputFile = modelName + '.xlsx'
                 if (options.file)
                     outputFile = options.file
                 fs.readFile(`${process.cwd()}/amplify/#current-cloud-backend/api/${Object.keys(amplifyMeta.api)[0]}/schema.graphql`, 'utf8', function (err, data) {
                     if (err) {
                         return error(err);
                     }
-                    const tableObj = [];
+                    const objList = [];
                     const typeDefs = gql`${data}`
                     typeDefs.definitions.forEach(def => {
                         if (def.kind === 'ObjectTypeDefinition') {
-                            tableObj.push({ "TableName": def.name.value});
+                            if (modelName == 'tables') {
+                                objList.push({ "TableName": def.name.value});
+                            } else if (def.name.value == modelName) {
+                                def.fields.forEach(field => {
+                                    if (field.kind === 'FieldDefinition') {
+                                        let obj = {
+                                            'name': field.name.value
+                                        }
+                                        if (field.type.kind === 'NamedType') {
+                                            obj['type'] = field.type.name.value;
+                                            obj['null'] = true;
+                                        } else if (field.type.kind === 'NonNullType') {
+                                            obj['type'] = field.type.type.name.value;
+                                            obj['null'] = false;
+                                        }
+                                        objList.push(obj);
+                                    }
+                                });
+                            }
                         }
                     });
-                    if (Object.keys(tableObj).length > 0) {
-                        const sheet = XLSX.utils.json_to_sheet(tableObj);
+                    if (Object.keys(objList).length > 0) {
+                        const sheet = XLSX.utils.json_to_sheet(objList);
                         const book = XLSX.utils.book_new();
                         XLSX.utils.book_append_sheet(book, sheet);
                         XLSX.writeFile(book, outputFile);
@@ -299,7 +318,7 @@ try {
                     }
                 });
             } catch (err) {
-                console.log('catch error');
+                error('catch error');
                 error(err);
             }
             break;
@@ -307,17 +326,17 @@ try {
                 try {
                     initToken(appId).then((config) => {
                         if (config != undefined) {
-                            console.log('USER_TOKEN_VALIDATE_PASSED');
+                            info('USER_TOKEN_VALIDATE_PASSED');
                         } else {
-                            console.log('USER_TOKEN_VALIDATE_FAILED');
+                            error('USER_TOKEN_VALIDATE_FAILED');
                         }
                     }, (reason) => {
-                        console.log(reason);
-                        console.log('USER_TOKEN_VALIDATE_FAILED');
+                        error(reason);
+                        error('USER_TOKEN_VALIDATE_FAILED');
                     });
                 } catch (err) {
                     error(err);
-                    console.log('USER_TOKEN_VALIDATE_FAILED');
+                    error('USER_TOKEN_VALIDATE_FAILED');
                 }
                 break;
             case 'example':
